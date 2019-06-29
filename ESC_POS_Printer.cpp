@@ -44,46 +44,20 @@ void ESC_POS_Printer::writeBytes(uint8_t a) {
 }
 
 void ESC_POS_Printer::writeBytes(uint8_t a, uint8_t b) {
-  stream->write(a);
-  stream->write(b);
+  uint8_t cmd[2] = {a, b};
+  stream->write(cmd, sizeof(cmd));
 }
 
 void ESC_POS_Printer::writeBytes(uint8_t a, uint8_t b, uint8_t c) {
-  stream->write(a);
-  stream->write(b);
-  stream->write(c);
+  uint8_t cmd[3] = {a, b, c};
+  stream->write(cmd, sizeof(cmd));
 }
 
 void ESC_POS_Printer::writeBytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
-  stream->write(a);
-  stream->write(b);
-  stream->write(c);
-  stream->write(d);
+  uint8_t cmd[4] = {a, b, c, d};
+  stream->write(cmd, sizeof(cmd));
 }
 
-#if 0
-// The underlying method for all high-level printing (e.g. println()).
-// The inherited Print class handles the rest!
-size_t ESC_POS_Printer::write(uint8_t c) {
-
-  if(c != 0x13) { // Strip carriage returns
-    stream->write(c);
-    unsigned long d = 0;
-    if((c == '\n') || (column == maxColumn)) { // If newline or wrap
-      d += (prevByte == '\n') ?
-        ((charHeight+lineSpacing) * dotFeedTime) :             // Feed line
-        ((charHeight*dotPrintTime)+(lineSpacing*dotFeedTime)); // Text line
-      column = 0;
-      c      = '\n'; // Treat wrap as newline on next pass
-    } else {
-      column++;
-    }
-    prevByte = c;
-  }
-
-  return 1;
-}
-#else
 // The underlying method for all high-level printing (e.g. println()).
 // The inherited Print class handles the rest!
 size_t ESC_POS_Printer::write(uint8_t c) {
@@ -101,7 +75,6 @@ size_t ESC_POS_Printer::write(uint8_t c) {
 
   return 1;
 }
-#endif
 
 void ESC_POS_Printer::begin() {
 
@@ -156,20 +129,13 @@ void ESC_POS_Printer::setBarcodeHeight(uint8_t val) { // Default is 50
   //writeBytes(ASCII_GS, 'h', val);
 }
 
-void ESC_POS_Printer::printBarcode(char *text, uint8_t type) {
+void ESC_POS_Printer::printBarcode(const char *text, uint8_t type) {
   feed(1); // Recent firmware can't print barcode w/o feed first???
   writeBytes(ASCII_GS, 'H', 2);    // Print label below barcode
   writeBytes(ASCII_GS, 'w', 3);    // Barcode width 3 (0.375/1.0mm thin/thick)
   writeBytes(ASCII_GS, 'k', type); // Barcode type (listed in .h file)
-#if 0
-  int len = strlen(text);
-  if(len > 255) len = 255;
-  stream->write(len);                                  // Write length byte
-  stream->write(text, len);
-#else
   // Write text including the terminating '\0'
   stream->write(text, strlen(text)+1);
-#endif
   prevByte = '\n';
 }
 
@@ -360,15 +326,9 @@ void ESC_POS_Printer::printBitmap(
   bitmap_command[3] = w & 0xFF;       // nL = width LS byte
   bitmap_command[4] = (w >> 8) & 0xFF;// nH = width MS byte
 
-#if 0
-  Serial.print("w="); Serial.print(w);
-  Serial.print(" h="); Serial.print(h);
-  Serial.print(" band_height="); Serial.print(band_height);
-  Serial.print(" w_bytes="); Serial.println(w_bytes);
-#endif
   // Line spacing = 16 dots
   stream->write("\x1b\x33\x10\x1bU\x01");   // Unidirectional print mode on
-  for (size_t row = 0; row < h; row += band_height) {
+  for (int row = 0; row < h; row += band_height) {
     stream->write(bitmap_command, sizeof(bitmap_command));
     stream->write(bitmap, w_bytes);
     stream->write('\n');
@@ -376,6 +336,53 @@ void ESC_POS_Printer::printBitmap(
   }
   stream->write("\x1b\x32\x1bU");     // Default line spacing
   stream->write((uint8_t)0);          // Unidirectional print mode off
+  prevByte = '\n';
+}
+
+void ESC_POS_Printer::printBitmap_P(
+    int w, int h, const uint8_t *bitmap, int density) {
+  uint8_t band_height;
+  uint8_t bitmap_command[] = { 0x1b, '*', 0, 0, 0 };
+  size_t w_bytes = w;
+  uint8_t buf[64];
+  PGM_P p = reinterpret_cast<PGM_P>(bitmap);
+
+  switch (density) {
+    default:
+      density = 1;
+      /* fall through */
+    case 1:
+      bitmap_command[2] = 0;          // m = single density
+      band_height = 8;
+      break;
+    case 2:
+      bitmap_command[2] = 33;         // m = double density
+      band_height = 24;
+      w_bytes *= 3;
+      break;
+  }
+  bitmap_command[3] = w & 0xFF;       // nL = width LS byte
+  bitmap_command[4] = (w >> 8) & 0xFF;// nH = width MS byte
+
+  // Line spacing = 16 dots
+  stream->write("\x1b\x33\x10\x1bU\x01");   // Unidirectional print mode on
+  for (int row = 0; row < h; row += band_height) {
+    memcpy(buf, bitmap_command, sizeof(bitmap_command));
+    uint8_t len = sizeof(bitmap_command);
+    uint8_t outlen;
+    for (size_t col = 0; col < w_bytes; col += outlen) {
+      outlen = min(sizeof(buf)-len, w_bytes - col);
+      memcpy_P(buf+len, p, outlen);
+      len += outlen;
+      p += outlen;
+      stream->write(buf, len);
+      len = 0;
+    }
+    stream->write('\n');
+  }
+  // The count correctly includes the trailing '\0'!
+  stream->write("\x1b\x32\x1bU", 5);    // Default line spacing,
+                                        // Unidirectional print mode off
   prevByte = '\n';
 }
 
