@@ -78,9 +78,9 @@ void printer_test()
 
   // Print the QR code in graphics mode
   // See the ./bitmap/mkqrcode program to generate qrcode.h
-  Serial.print("qrcode_data size = "); Serial.println(sizeof(qrcode_data));
+  Serial.print(F("qrcode_data size = ")); Serial.println(sizeof(qrcode_data));
   printer.printBitmap(qrcode_width, qrcode_height, qrcode_data, qrcode_density);
-  printer.println("ESC_POS_Printer");
+  printer.println(F("ESC_POS_Printer"));
 
   printer.feed(2);
 }
