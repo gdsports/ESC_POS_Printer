@@ -1,6 +1,6 @@
 #!/bin/sh
 # If this command does not exist, try sudo apt-get install qrencode
-# Single density, prints distorted on my printer (50% stretch in veritical)
+# Single density, prints distorted on my printer (50% stretch in vertical)
 # but my barcode reader reads the code any way. This array is much smaller.
 qrencode -o qr.png https://github.com/gdsports/ESC_POS_Printer
 # Double density, takes more storage but higher DPI
